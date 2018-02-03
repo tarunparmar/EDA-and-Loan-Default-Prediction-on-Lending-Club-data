@@ -1,0 +1,50 @@
+---
+title: "Untitled"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+filepath <- paste(getwd(),"/Data/",sep = "")
+declined_data <- readRDS(paste(filepath,"declined_loan_data.Rds",sep = ""))
+accepted_data <- readRDS(paste(filepath,"loan_data.Rds",sep = ""))
+```
+
+```{r}
+accepted_data %>% group_by(loan_status) %>% summarise(count = n())
+```
+```{r}
+accepted_data$loan_status[accepted_data$loan_status=="Does not meet the credit policy. Status:Charged Off"]<-"Charged Off"
+accepted_data$loan_status[accepted_data$loan_status=="Does not meet the credit policy. Status:Fully Paid"]<-"Fully Paid"
+accepted_data
+```
+
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+
+```
+
+### Chart C
+
+```{r}
+
+```
+
