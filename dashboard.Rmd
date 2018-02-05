@@ -1,50 +1,248 @@
 ---
-title: "Untitled"
+title: "demo dashboard"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
+runtime: shiny
 ---
 
+Dashboard
+=====================================
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(dplyr)
-filepath <- paste(getwd(),"/Data/",sep = "")
-declined_data <- readRDS(paste(filepath,"declined_loan_data.Rds",sep = ""))
-accepted_data <- readRDS(paste(filepath,"loan_data.Rds",sep = ""))
-```
-
-```{r}
-accepted_data %>% group_by(loan_status) %>% summarise(count = n())
-```
-```{r}
-accepted_data$loan_status[accepted_data$loan_status=="Does not meet the credit policy. Status:Charged Off"]<-"Charged Off"
-accepted_data$loan_status[accepted_data$loan_status=="Does not meet the credit policy. Status:Fully Paid"]<-"Fully Paid"
-accepted_data
+load("./Data/accepted_loan_subset_data.RData")
+accepted_loan_df <- accepted_loan_subset_df
+rm(accepted_loan_subset_df)
 ```
 
 
-Column {data-width=650}
+Column {data-width=500}
 -----------------------------------------------------------------------
 
 ### Chart A
 
 ```{r}
-
+library(tidyr)
+dt1 <- accepted_loan_df %>% 
+  group_by(loan_status) %>% 
+  summarise(LoanAmount = sum(as.numeric(loan_amnt),na.rm = T), 
+            NumberofLoans = n()) %>% 
+  as.data.frame()
+dt1$loan_status[1] <- NA
+dt1 <- dt1[complete.cases(dt1),]
 ```
-
-Column {data-width=350}
------------------------------------------------------------------------
 
 ### Chart B
 
 ```{r}
-
+library(plotly)
+plot_ly(dt1, labels = ~loan_status, values = ~LoanAmount, type = 'pie') %>%
+  layout(title = 'Loan Status by Count and Outstanding',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
 ```
+
+
+Column {data-width=500}
+-----------------------------------------------------------------------
 
 ### Chart C
 
 ```{r}
+plot_ly(accepted_loan_df, x=~grade, y=~int_rate, type = "box")
+```
+
+### Chart D
+
+```{r}
+plot_ly(declined_loan_df, x=~Risk_Score, type = "histogram")
+```
+
+Row {.tabset}
+-----------------------------------------------------------------------
+
+### TotalLoan All Years
+
+```{r}
+library(scales)
+dt2 <- accepted_loan_df %>% 
+  group_by(year) %>% 
+  summarise(TotalLoan = sum(as.numeric(loan_amnt),na.rm = T), 
+            NumberofLoans = n()) %>% 
+  as.data.frame()
+dt2$year[1] <- NA
+dt2 <- dt2[complete.cases(dt2),]
+yr <- levels(factor(dt2$year))
+plot_ly(dt2,x=~year, 
+        y=~TotalLoan, 
+        text = dollar_format()(dt2$TotalLoan), 
+        type='bar') %>%
+  layout(title = "All Years")
+```
+
+### By Month
+
+```{r}
+selectInput("yrs", label = "Select Year:",
+            choices = c("2007","2008", "2009","2010","2011","2012","2013",
+                        "2014", "2015", "2016", "2017"), selected = "2017")
+dt2_1 <- reactive({
+  accepted_loan_df %>% 
+    filter(year == input$yrs) %>%
+    group_by(month) %>% 
+    summarise(TotalLoan = sum(as.numeric(loan_amnt), na.rm = T),
+              NumberofLoans = n()) %>%
+    as.data.frame()
+})
+
+output$by_month_plot <- renderPlotly({
+  plot_ly(dt2_1(), 
+          x=~month, 
+          y=~TotalLoan, 
+          text = dollar_format()(dt2_1()$TotalLoan), 
+          color = ~month, 
+          type='bar') %>%
+    layout(title = paste(yr," - By Month",sep = ""))
+}) 
+plotlyOutput("by_month_plot")
+```
+
+EDA
+=====================================
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+### Loan Status by Grade of Loan
+```{r}
+dt_2 <- accepted_loan_df %>%
+  group_by(grade, loan_status) %>%
+  summarise(Count = n())
+dt_2$grade[1] <- NA
+dt_2 <- dt_2[complete.cases(dt_2),]
+plot_ly(dt_2, x = ~grade, y = ~Count, color = ~loan_status, type = 'bar') %>%
+  layout(barmode = 'stack')
+```
+
+### Loan Status by Purpose of Loan
+```{r}
+dt_3 <- accepted_loan_df %>%
+  group_by(purpose, loan_status) %>%
+  summarise(Count = n())
+dt_3$purpose[1] <- NA
+dt_3 <- dt_3[complete.cases(dt_3),]
+plot_ly(dt_3, x = ~purpose, y = ~Count, color = ~loan_status, type = 'bar') %>%
+  layout(barmode = 'stack',
+         margin = list(b = 100))
+```
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+### Loan Status by Grade of Loan
+```{r}
+plot_ly(accepted_loan_df, x = ~loan_status, y = ~loan_amnt, color = ~loan_status, type = 'box') %>% layout(margin = list(b = 100))
+```
+
+### Loan Amount By Year
+```{r}
+dt_4 <- accepted_loan_df %>% 
+  select(year, loan_amnt) %>% 
+  na.omit(.) %>%
+  group_by(year) %>%
+  dplyr::summarize(Amount = sum(as.numeric(loan_amnt), na.rm = T), Volume = n(), AvgAmount = Amount/Volume)
+
+ay <- list(
+  tickfont = list(color = "red"),
+  overlaying = "y",
+  side = "right",
+  title = "Volume"
+)
+plot_ly(dt_4, x = ~year) %>%
+  add_lines(y = ~Amount, name = "Amount", type = 'scatter', mode = 'lines') %>%
+  add_lines(y = ~Volume, name = "Volume", type = 'scatter', mode = 'lines', yaxis = 'y2') %>% 
+  layout(yaxis2 = ay)
+```
+
+EDA-2
+=====================================
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+### Heatmap
+```{r}
+
+# # Term, interest rate and grade: dataser preprocessing
+# accepted_loan_df$int_rate = as.numeric(sub("%", "", accepted_loan_df$int_rate))
+# tig_df <- select(accepted_loan_df, int_rate, sub_grade, grade, term, year)
+# tig_df <- tig_df[tig_df$year %in% c(2011, 2012, 2013, 2014, 2015, 2016, 2017),]
+# 
+# # Stacked boxplots
+# g_tig <- ggplot(tig_df, aes(grade, int_rate))
+# g_tig + geom_boxplot(outlier.size = 0.5, color = "red") + facet_grid(term ~ 
+#     year) + labs(title = "Interest Rate Distribution by Grade", x = "Grade", 
+#     y = "Interest Rate(%)")
+
+library(heatmaply)
+heatmaply(accepted_loan_df, k_row = 3, k_col = 2)
+
+```
+
+
+Geographic Data
+=====================================
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+### US Map of Loan Data
+```{r}
+df <- accepted_loan_df %>% 
+  select(loan_amnt, addr_state) %>%
+  na.omit() %>% 
+  group_by(addr_state) %>% 
+  dplyr::summarise(TotalLoanAmount = sum(as.numeric(loan_amnt), na.rm = TRUE))
+
+df$hover <- with(df, paste(addr_state, '<br>', "TotalLoanAmount", dollar_format()(TotalLoanAmount)))
+
+# give state boundaries a white border
+l <- list(color = toRGB("white"), width = 2)
+# specify some map projection/options
+g <- list(
+  scope = 'usa',
+  projection = list(type = 'albers usa'),
+  showlakes = TRUE,
+  lakecolor = toRGB('white')
+)
+
+plot_geo(df, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~TotalLoanAmount, text = ~hover, locations = ~addr_state,
+    color = ~TotalLoanAmount, colors = 'Purples'
+  ) %>%
+  colorbar(title = "Millions USD") %>%
+  layout(
+    title = 'Lending Club Loans by State<br>(Hover for breakdown)',
+    geo = g
+  )
+```
+
+### Heatmap of Why and how much people borrow
+
+```{r}
+library(highcharter)
+library(dplyr)
+library(viridisLite)
+library(treemap)
+
+heatmap_df <- accepted_loan_df %>% 
+  group_by(purpose) %>% 
+  summarise(Volume = n(), 
+            Avg_Amount = sum(as.numeric(loan_amnt), rm.na = TRUE)/n()) %>% 
+  arrange(-Volume, -Avg_Amount)
+
+hchart(heatmap_df, "treemap", hcaes(x = purpose, value = Volume, color = Avg_Amount))
 
 ```
 
