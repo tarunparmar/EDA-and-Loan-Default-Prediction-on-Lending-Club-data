@@ -1,0 +1,64 @@
+## Data Cleaning and Feature Engineering 
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+filepath <- paste(getwd(),"/Data/",sep = "")
+declined_loan_df <- readRDS(paste(filepath,"declined_loan_data.Rds",sep = ""))
+accepted_loan_df <- readRDS(paste(filepath,"accepted_loan_data.Rds",sep = ""))
+```
+
+```{r}
+accepted_loan_df %>% group_by(loan_status) %>% summarise(count = n())
+```
+```{r}
+accepted_loan_df$loan_status[accepted_loan_df$loan_status=="Does not meet the credit policy. Status:Charged Off"]<-"Charged Off"
+accepted_loan_df$loan_status[accepted_loan_df$loan_status=="Does not meet the credit policy. Status:Fully Paid"]<-"Fully Paid"
+```
+
+```{r}
+library(stringr) # package to handle strings
+# Rejected loans have loan application date. For accepted loans issue date is assumed as loan application date
+accepted_loan_df$month=str_split_fixed(accepted_loan_df$issue_d, "-", 2)[,1] # Extract Month Ch
+#data_accept$month=match(data_accept$month,month.abb) # Extract Month nu
+accepted_loan_df$year=str_split_fixed(accepted_loan_df$issue_d, "-", 2)[,2] # Extract Year
+
+library(lubridate) # package to handle dates
+
+declined_loan_df$Application.Date <- ymd(declined_loan_df$Application.Date) # convert to date format
+declined_loan_df$month=month(declined_loan_df$Application.Date,label=TRUE,abbr=TRUE) # Extract "Month" from date
+declined_loan_df$year=year(declined_loan_df$Application.Date) # Extract "Year" from date
+declined_loan_df$Application.Date<-NULL # Drop original date field
+declined_loan_df$loan_status<-"Rejected" #create column for loan status - - Match column of accepted loan
+```
+
+```{r}
+# Save all data in environment to disk
+#save.image()
+```
+
+```{r}
+var_name = c("id", "member_id", "loan_amnt", "term", "int_rate", "installment", 
+             "grade", "sub_grade", "emp_title", "emp_length", "home_ownership", "annual_inc", 
+             "verification_status", "issue_d", "loan_status", "purpose", "title", "addr_state", 
+             "dti", "earliest_cr_line", "open_acc", "total_acc", "total_pymnt", "total_rec_prncp", 
+             "total_rec_int", "open_acc_6m", "open_il_12m", "open_il_24m", "mths_since_rcnt_il", 
+             "total_bal_il", "il_util", "all_util", "total_rev_hi_lim", "mort_acc", "mths_since_recent_bc", 
+             "mths_since_recent_bc_dlq", "num_actv_bc_tl", "num_op_rev_tl", "tot_hi_cred_lim", 
+             "total_bal_ex_mort", "total_bc_limit", "month", "year")
+accepted_loan_df <- accepted_loan_df %>% select(one_of(var_name))
+accepted_loan_df <- accepted_loan_df %>%
+  filter(grade != "")
+
+## Recode Grade to calculate borrower score and add it to new column newGrade
+accepted_loan_subset_df$newGrade <- accepted_loan_subset_df$grade
+accepted_loan_subset_df$newGrade <- as.numeric(recode(accepted_loan_subset_df$newGrade,                                                       "A" = 1, "B" = 0.8, "C" = 0.7, "D" = 0.6, "E" = 0.5, "F" = 0.4, "G" = 0.3))
+#acce$CreditScore <- declined_loan_df
+rm(list = ls()[!ls() %in% c("accepted_loan_subset_df", "accepted_loan_df", "declined_loan_df", "filepath")])
+```
+
+```{r}
+# Save the pre-selected dataset
+save(accepted_loan_subset_df, file = "./Data/accepted_loan_subset_data.RData")
+```
+
