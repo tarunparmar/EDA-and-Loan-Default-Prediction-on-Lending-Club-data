@@ -101,47 +101,4 @@ declined_loan_df <- rbind.fill(declined_loan_df)
 
 saveRDS(declined_loan_df, paste(filepath, "declined_loan_data.Rds"))
 
-rm(list = ls()[!ls() %in% c("loan_df", "declined_loan_df","filepath")])
-
-
-# loan_df$AR<-"Issued"# Create Variable to mark as "Declined" or "Issued"
-# loan_df$Risk_Score<-(loan_df$fico_range_low+data_accept$fico_range_high)/2 # Average of FICO Score Range - Match column of rejected loan
-# # For applications prior to November 5, 2013 the risk score is the borrower's FICO score. For applications after November 5, 2013 the risk score is the borrower's Vantage score.
-# 
-# 
-# library(stringr) # package to handle strings
-# # Rejected loans have loan application date. For accepted loans issue date is 
-# # assumed as loan application date
-# loan_df$month=str_split_fixed(loan_df$issue_d, "-", 2)[,1] # Extract Month Ch
-# #data_accept$month=match(data_accept$month,month.abb) # Extract Month nu
-# loan_df$year=str_split_fixed(loan_df$issue_d, "-", 2)[,2] # Extract Year
-# dim(loan_df)
-# 
-# # Create Variable to mark as "Declined" or "Issued"
-# declined_loan_df$AR<-"Declined" 
-# # create grade "z" for rejected loans - Match column of accepted loan
-# declined_loan_df$grade<-"Z" 
-# # create a common id for rejected loans - Match column of accepted loan
-# declined_loan_df$id<-10000000 
-# 
-# library(lubridate) # package to handle dates
-# 
-# # convert to date format
-# declined_loan_df$Application.Date <- ymd(declined_loan_df$Application.Date) 
-# # Extract "Month" from date
-# declined_loan_df$month=month(declined_loan_df$Application.Date,
-#                              label=TRUE,abbr=TRUE)
-# # Extract "Year" from date 
-# declined_loan_df$year=year(declined_loan_df$Application.Date)
-# # Drop original date field
-# declined_loan_df$Application.Date<-NULL
-# #create column for loan status - - Match column of accepted loan
-# declined_loan_df$loan_status<-"Rejected"
-# 
-# dim(declined_loan_df)
-# 
-# save(declined_loan_df,file="declined_loan_df.RData")
-# 
-
-# 41 variables, selection criteria: limited missingness, understandable,
-# useful
+#rm(list = ls()[!ls() %in% c("loan_df", "declined_loan_df","filepath")])

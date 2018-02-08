@@ -1,35 +1,153 @@
-## Data Cleaning and Feature Engineering 
+### Data Preparation
 
+#### Load necessary packages
 ```{r setup, include=FALSE}
 library(flexdashboard)
+library(plotly)
 library(dplyr)
-filepath <- paste(getwd(),"/Data/",sep = "")
-declined_loan_df <- readRDS(paste(filepath,"declined_loan_data.Rds",sep = ""))
-accepted_loan_df <- readRDS(paste(filepath,"accepted_loan_data.Rds",sep = ""))
-```
-
-```{r}
-accepted_loan_df %>% group_by(loan_status) %>% summarise(count = n())
-```
-```{r}
-accepted_loan_df$loan_status[accepted_loan_df$loan_status=="Does not meet the credit policy. Status:Charged Off"]<-"Charged Off"
-accepted_loan_df$loan_status[accepted_loan_df$loan_status=="Does not meet the credit policy. Status:Fully Paid"]<-"Fully Paid"
-```
-
-```{r}
+library(data.table)
+library(broom)
+library(scales) # package to convert number to currency
 library(stringr) # package to handle strings
-# Rejected loans have loan application date. For accepted loans issue date is assumed as loan application date
-accepted_loan_df$month=str_split_fixed(accepted_loan_df$issue_d, "-", 2)[,1] # Extract Month Ch
-#data_accept$month=match(data_accept$month,month.abb) # Extract Month nu
-accepted_loan_df$year=str_split_fixed(accepted_loan_df$issue_d, "-", 2)[,2] # Extract Year
-
 library(lubridate) # package to handle dates
+library(VIM) # package to report descriptive statistics
+library(highcharter) # package to generate plots
+```
 
-declined_loan_df$Application.Date <- ymd(declined_loan_df$Application.Date) # convert to date format
-declined_loan_df$month=month(declined_loan_df$Application.Date,label=TRUE,abbr=TRUE) # Extract "Month" from date
-declined_loan_df$year=year(declined_loan_df$Application.Date) # Extract "Year" from date
-declined_loan_df$Application.Date<-NULL # Drop original date field
-declined_loan_df$loan_status<-"Rejected" #create column for loan status - - Match column of accepted loan
+```{}
+Run this section of code if you downloaded data using `download_data.R` script in this project. Else skip directly to line 163 to run load pre-cleaned data. 
+```
+
+#### Load data 
+
+```{r}
+filepath <- paste(getwd(),"/Data/",sep = "")
+accepted_loan_df <- readRDS(paste(filepath,"accepted_loan_data.Rds",sep = ""))
+
+```
+
+Data dimensions and column types
+
+```{r}
+dim(accepted_loan_df)
+str(accepted_loan_df)
+```
+There are a lot of feature that can be dropped and pick only some due to limit scope of analysis in this example.
+
+#### Cleaning
+
+
+#### Let's filter to a few columns
+```{r}
+accepted_loan_subset_df<-subset(accepted_loan_df, 
+                                select= c(id,
+                                          issue_d,
+                                          loan_amnt,
+                                          annual_inc,
+                                          title, 
+                                          dti,
+                                          open_acc,
+                                          total_acc,
+                                          term,
+                                          addr_state, 
+                                          emp_length, 
+                                          policy_code,
+                                          earliest_cr_line,
+                                          grade,
+                                          loan_status,
+                                          purpose,
+                                          int_rate))
+
+rm(list = ls()[!ls() %in% c("accepted_loan_subset_df", "filepath")])
+```
+
+#### Check missing values
+```{r}
+summary(aggr(accepted_loan_subset_df))
+```
+
+
+#### Feature Engineering
+
+I utilized the full data that I downloaded by logging in andcalculated Risk Score from fico score columns.
+```{r}
+df_from_full_data <- fread(paste(getwd(),"/Downloaded Data/accepted_loan_full_data.csv", sep = ""), 
+                           select = c("fico_range_high","fico_range_low"))
+
+# Average of FICO Score Range - Match column of rejected loan
+accepted_loan_subset_df$Risk_Score <- (df_from_full_data$fico_range_low + df_from_full_data$fico_range_high)/2 
+
+rm(list = ls()[!ls() %in% c("accepted_loan_subset_df", "filepath")])
+```
+
+Based on the description provided in Lending Club data dictionary, it appears `loan_status` is going to be an important variable in starting our analysis. So let's take a look at levels in this column.
+
+```{r}
+accepted_loan_subset_df %>% group_by(loan_status) %>% summarise(count = n())
+```
+
+Let's correct this data further. 
+
+```{r}
+## Recode Grade to calculate borrower score and add it to new column newGrade
+accepted_loan_subset_df$newGrade <- accepted_loan_subset_df$grade
+accepted_loan_subset_df$newGrade <- as.numeric(recode(accepted_loan_subset_df$newGrade,                                                       "A" = 1, "B" = 0.8, "C" = 0.7, "D" = 0.6, "E" = 0.5, "F" = 0.4, "G" = 0.3))
+
+accepted_loan_subset_df$loan_status[accepted_loan_subset_df$loan_status=="Does not meet the credit policy. Status:Charged Off"]<-"Charged Off"
+accepted_loan_subset_df$loan_status[accepted_loan_subset_df$loan_status=="Does not meet the credit policy. Status:Fully Paid"]<-"Fully Paid"
+table(accepted_loan_subset_df$loan_status, accepted_loan_subset_df$term)
+```
+
+We can create three major categories in this column, mainly loans that are `Default`, `Paid off` or they are `Current`.
+`Charged Off`, `Default`, `In Grace Period`, `Late (16-30 days)`, and `Late (31-120 days)` values are categorized to a single category: `Default`. The data is moderately imbalance.
+
+
+```{r}
+accepted_loan_subset_df$loan_status[accepted_loan_subset_df$loan_status=="Charged Off"]<-"Default"
+accepted_loan_subset_df$loan_status[accepted_loan_subset_df$loan_status=="In Grace Period"]<-"Default"
+accepted_loan_subset_df$loan_status[accepted_loan_subset_df$loan_status=="Late (16-30 days)"]<-"Default"
+accepted_loan_subset_df$loan_status[accepted_loan_subset_df$loan_status=="Late (31-120 days)"]<-"Default"
+table(accepted_loan_subset_df$loan_status, accepted_loan_subset_df$term)
+```
+
+
+Several features of the data set were inherently related, lending themselves naturally to feature engineering. For example, I used `lubridate` alongside the loan issue date and the date of the borrower’s first credit line to calculate the length of each borrower’s credit history.
+
+```{r}
+# Add a day (01) to make it a full date column as its easy to operate later
+accepted_loan_subset_df$issue_d <- as.character(accepted_loan_subset_df$issue_d)
+accepted_loan_subset_df$issue_d <- paste(accepted_loan_subset_df$issue_d, "-01", sep = "")
+accepted_loan_subset_df$issue_d <- parse_date_time(accepted_loan_subset_df$issue_d, "myd")
+
+# accepted_loan_subset_df$month=str_split_fixed(accepted_loan_subset_df$issue_d, "-", 2)[,1] # Extract Month Ch
+# accepted_loan_subset_df$year=str_split_fixed(accepted_loan_subset_df$issue_d, "-", 2)[,2] # Extract Year
+accepted_loan_subset_df$month <- month(accepted_loan_subset_df$issue_d, label = T)
+accepted_loan_subset_df$year <- year(accepted_loan_subset_df$issue_d)
+
+
+accepted_loan_subset_df$earliest_cr_line <- as.character(accepted_loan_subset_df$earliest_cr_line)
+accepted_loan_subset_df$earliest_cr_line <- paste(accepted_loan_subset_df$earliest_cr_line, "-01", sep = "")
+accepted_loan_subset_df$earliest_cr_line <- parse_date_time(accepted_loan_subset_df$earliest_cr_line, "myd")
+
+accepted_loan_subset_df$time_since_first_credit <- accepted_loan_subset_df$issue_d - accepted_loan_subset_df$earliest_cr_line
+accepted_loan_subset_df$time_since_first_credit <- as.numeric(accepted_loan_subset_df$time_since_first_credit)
+
+accepted_loan_subset_df <- accepted_loan_subset_df %>% filter(time_since_first_credit > 0)
+head(accepted_loan_subset_df$time_since_first_credit)
+
+## Remove rows that do not have any Grade
+accepted_loan_subset_df <- accepted_loan_subset_df %>%
+  filter(grade != "")
+
+## Convert int_rate column to Numeric
+accepted_loan_subset_df$InterestRate <- substr(unlist(strsplit(accepted_loan_subset_df$int_rate, "/")),1,nchar(unlist(strsplit(accepted_loan_subset_df$int_rate, "/")))-1) %>% as.numeric()
+
+```
+
+Another engineered feature, current.account.ratio, was calculated by dividing open.acc (the number of open credit lines the borrower had at the time of the loan) by total.acc (the total number of credit lines the borrower has had).
+
+```{r}
+accepted_loan_subset_df$CurrentAccountRatio <- accepted_loan_subset_df$open_acc/accepted_loan_subset_df$total_acc 
 ```
 
 ```{r}
@@ -37,28 +155,64 @@ declined_loan_df$loan_status<-"Rejected" #create column for loan status - - Matc
 #save.image()
 ```
 
-```{r}
-var_name = c("id", "member_id", "loan_amnt", "term", "int_rate", "installment", 
-             "grade", "sub_grade", "emp_title", "emp_length", "home_ownership", "annual_inc", 
-             "verification_status", "issue_d", "loan_status", "purpose", "title", "addr_state", 
-             "dti", "earliest_cr_line", "open_acc", "total_acc", "total_pymnt", "total_rec_prncp", 
-             "total_rec_int", "open_acc_6m", "open_il_12m", "open_il_24m", "mths_since_rcnt_il", 
-             "total_bal_il", "il_util", "all_util", "total_rev_hi_lim", "mort_acc", "mths_since_recent_bc", 
-             "mths_since_recent_bc_dlq", "num_actv_bc_tl", "num_op_rev_tl", "tot_hi_cred_lim", 
-             "total_bal_ex_mort", "total_bc_limit", "month", "year")
-accepted_loan_df <- accepted_loan_df %>% select(one_of(var_name))
-accepted_loan_df <- accepted_loan_df %>%
-  filter(grade != "")
-
-## Recode Grade to calculate borrower score and add it to new column newGrade
-accepted_loan_subset_df$newGrade <- accepted_loan_subset_df$grade
-accepted_loan_subset_df$newGrade <- as.numeric(recode(accepted_loan_subset_df$newGrade,                                                       "A" = 1, "B" = 0.8, "C" = 0.7, "D" = 0.6, "E" = 0.5, "F" = 0.4, "G" = 0.3))
-#acce$CreditScore <- declined_loan_df
-rm(list = ls()[!ls() %in% c("accepted_loan_subset_df", "accepted_loan_df", "declined_loan_df", "filepath")])
-```
 
 ```{r}
 # Save the pre-selected dataset
 save(accepted_loan_subset_df, file = "./Data/accepted_loan_subset_data.RData")
+
+# Load above saved data
+# load("~/R/myR/Loan Default Prediction on Lending Club data/Data/accepted_loan_subset_data.RData")
 ```
+
+
+### Exploratory Analysis
+
+#### Load already cleanrd up data.
+
+```{r}
+load("Data/accepted_loan_subset_data.RData")
+```
+
+To start examining the data, I began by investigating the distributions of each numeric feature via histograms, segmented out by loan outcome.
+
+The interest rate analysis was of particular interest. Examining the histogram, fully paid loans are clearly clumped at lower interest rates, while charged off loans have a more even distribution, tending towards higher interest rates more frequently than the fully paid ones do. This result makes intuitive sense, as higher interest rates are assigned to riskier investments.
+
+```{r}
+
+loan_heatmap <- accepted_loan_subset_df %>% 
+  group_by(loan_status, year) %>%
+  summarize(loan_amount = median(loan_amnt))
+
+hchart(loan_heatmap, "heatmap", hcaes(x = loan_status, y = year, value = loan_amount)) 
+```
+
+```{r}
+
+```
+
+
+```{r}
+hchart(density(accepted_loan_subset_df$loan_amnt), type = "area", color = "#B71C1C", name = "Loan Status Data Distribution")
+```
+
+
+All issued loan data was downloaded from a registered Lending Club account. The data can be downloaded from the Lending Club statistics webpage. A rapid growth of issued loans can be observed in recent years. The data for 2017 is only upto 2017Q3.
+
+```{r}
+issued_loans_by_year <- accepted_loan_subset_df %>% 
+  group_by(year) %>% 
+  summarise(TotalLoan = sum(as.numeric(loan_amnt),na.rm = T), 
+            NumberofLoans = n()) %>% 
+  as.data.frame()
+issued_loans_by_year$year[1] <- NA
+issued_loans_by_year <- issued_loans_by_year[complete.cases(issued_loans_by_year),]
+yr <- levels(factor(issued_loans_by_year$year))
+plot_ly(issued_loans_by_year,x=~year, 
+        y=~TotalLoan, 
+        text = dollar_format()(issued_loans_by_year$TotalLoan), 
+        type='bar') %>%
+  layout(title = "All Years")
+```
+
+#### Descriptive Statistics
 
