@@ -1,5 +1,5 @@
 ---
-title: "demo dashboard"
+title: "Lending Club dashboard"
 output: 
   flexdashboard::flex_dashboard:
     orientation: rows
@@ -25,11 +25,11 @@ library(treemap)
 #   filter(year == "2011" | year == "2012" | year == "2013" | year == "2014")
 # rm(accepted_loan_subset_df)
 
-accepted_loan_df <- readRDS("./Data/accepted_loans_2011_to_2014.Rds")
-int_rates_2017 <- readRDS("./Data/accepted_loans_int_rate_2017.Rds")
+accepted_loan_df <- readRDS("accepted_loans_2011_to_2014.Rds")
+int_rates_2017 <- readRDS("accepted_loans_int_rate_2017.Rds")
 ```
 
-Column {data-width=500}
+Row {data-width=500}
 -----------------------------------------------------------------------
 
 ### 36-Month Loans
@@ -51,11 +51,18 @@ valueBox(percent(qtrly_int_rates$LastQtrAvgIntRate[2]), color = "info",
          caption = "60-Month Loans (Last Qarter Avg Interest Rate)", icon="fa-thumbs-up")
 ```
 
+### Total Issued Loan
 
-Column {data-width=500}
+```{r}
+valueBox(dollar_format()(sum(as.numeric(accepted_loan_df$loan_amnt), na.rm = T)), color = "orange",
+         caption = "Total Issued Loan Amount from 2011 to 2014", icon="ion-speedometer")
+```
+
+
+Row
 -----------------------------------------------------------------------
 
-### Chart A
+### Loan Category Share
 
 ```{r}
 dt1 <- accepted_loan_df %>% 
@@ -63,12 +70,12 @@ dt1 <- accepted_loan_df %>%
   summarise(LoanAmount = sum(as.numeric(loan_amnt),na.rm = T), 
             NumberofLoans = n()) %>% 
   as.data.frame()
-dt1$loan_status[1] <- NA
-dt1 <- dt1[complete.cases(dt1),]
+# dt1$loan_status[1] <- NA
+# dt1 <- dt1[complete.cases(dt1),]
 knitr::kable(dt1)
 ```
 
-### Chart B
+### Loan Status Distribution
 
 ```{r}
 plot_ly(dt1, labels = ~loan_status, values = ~LoanAmount, type = 'pie') %>%
@@ -78,22 +85,14 @@ plot_ly(dt1, labels = ~loan_status, values = ~LoanAmount, type = 'pie') %>%
 ```
 
 
-Column {data-width=500}
------------------------------------------------------------------------
-
-### Chart C
+### Grade vs Interest
 
 ```{r}
-plot_ly(accepted_loan_df, x=~grade, y=~int_rate, type = "box")
+plot_ly(accepted_loan_df, x=~grade, y=~int_rate, color = ~Risk_Score, type = "box")
 ```
 
-### Chart D
 
-```{r}
-#plot_ly(declined_loan_df, x=~Risk_Score, type = "histogram")
-```
-
-Row {.tabset}
+Row {data-width=500}
 -----------------------------------------------------------------------
 
 ### TotalLoan All Years
@@ -104,8 +103,8 @@ dt2 <- accepted_loan_df %>%
   summarise(TotalLoan = sum(as.numeric(loan_amnt),na.rm = T), 
             NumberofLoans = n()) %>% 
   as.data.frame()
-dt2$year[1] <- NA
-dt2 <- dt2[complete.cases(dt2),]
+# dt2$year[1] <- NA
+# dt2 <- dt2[complete.cases(dt2),]
 yr <- levels(factor(dt2$year))
 plot_ly(dt2,x=~year, 
         y=~TotalLoan, 
@@ -118,8 +117,7 @@ plot_ly(dt2,x=~year,
 
 ```{r}
 selectInput("yrs", label = "Select Year:",
-            choices = c("2007","2008", "2009","2010","2011","2012","2013",
-                        "2014", "2015", "2016", "2017"), selected = "2017")
+            choices = c("2011","2012","2013", "2014"), selected = "2014")
 dt2_1 <- reactive({
   accepted_loan_df %>% 
     filter(year == input$yrs) %>%
@@ -144,7 +142,7 @@ plotlyOutput("by_month_plot")
 EDA
 =====================================
 
-Column {data-width=500}
+Row {data-width=500}
 -----------------------------------------------------------------------
 ### Loan Status by Grade of Loan
 ```{r}
@@ -169,7 +167,7 @@ plot_ly(dt_3, x = ~purpose, y = ~Count, color = ~loan_status, type = 'bar') %>%
          margin = list(b = 100))
 ```
 
-Column {data-width=500}
+Row {data-width=500}
 -----------------------------------------------------------------------
 ### Loan Status by Grade of Loan
 ```{r}
@@ -205,24 +203,37 @@ Column {data-width=1000}
 ### Sub plots by grade and year
 ```{r}
 
-# Term, interest rate and grade: dataser preprocessing
-accepted_loan_df$int_rate = as.numeric(sub("%", "", accepted_loan_df$int_rate))
-tig_df <- select(accepted_loan_df, int_rate, grade, term, year)
-tig_df <- tig_df[tig_df$year %in% c(2011, 2012, 2013, 2014, 2015, 2016, 2017),]
-
-# Stacked boxplots
-g_tig <- ggplot(tig_df, aes(grade, int_rate))
-g_tig + geom_boxplot(outlier.size = 0.5, color = "red") + facet_grid(term ~
+# # Term, interest rate and grade: dataser preprocessing
+# # Stacked boxplots
+g_tig <- ggplot(accepted_loan_df, aes(grade, int_rate))
+gt <- g_tig + geom_boxplot(outlier.size = 0.5, color = "red") + facet_grid(term ~
     year) + labs(title = "Interest Rate Distribution by Grade", x = "Grade",
     y = "Interest Rate(%)")
+ggplotly(gt)
 
+# lvls <- levels(factor(accepted_loan_df$year))
+# lvls2 <- levels(factor(accepted_loan_df$term))
+# plots_i <- list()
+# plots_j <- list()
+# for(i in seq_along(lvls)){
+#   plots_i[[i]] <- accepted_loan_df %>% 
+#       filter(year == lvls[i]) %>% 
+#     plot_ly(.,x=~grade, y=~InterestRate, type="box")
+# }
+# 
+# for(j in seq_along(lvls2)){
+#   plots_j[[j]] <- dt %>%
+#     filter(term == lvls2[j]) %>% 
+#     plot_ly(.,x=~grade, y=~InterestRate, type="box")
+# }
+# subplot(plots_i,plots_j,nrows = 2)
 ```
 
 
 Geographic Data
 =====================================
 
-Column {data-width=1000}
+Row {data-width=1000}
 -----------------------------------------------------------------------
 
 ### US Map of Loan Data
@@ -257,16 +268,19 @@ plot_geo(df, locationmode = 'USA-states') %>%
   )
 ```
 
+Row {data-width=1000}
+-----------------------------------------------------------------------
+
 ### Heatmap of Why and how much people borrow
 
 ```{r}
-# heatmap_df <- accepted_loan_df %>% 
-#   group_by(purpose) %>% 
-#   summarise(Volume = n(), 
-#             Avg_Amount = sum(as.numeric(loan_amnt), rm.na = TRUE)/n()) %>% 
-#   arrange(-Volume, -Avg_Amount)
-# 
-# hchart(heatmap_df, "treemap", hcaes(x = purpose, value = Volume, color = Avg_Amount))
+heatmap_df <- accepted_loan_df %>%
+  group_by(purpose) %>%
+  summarise(Volume = n(),
+            Avg_Amount = sum(as.numeric(loan_amnt), rm.na = TRUE)/n()) %>%
+  arrange(-Volume, -Avg_Amount)
+
+hchart(heatmap_df, "treemap", hcaes(x = purpose, value = Volume, color = Avg_Amount))
 
 ```
 
